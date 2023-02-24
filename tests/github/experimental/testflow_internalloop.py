@@ -1,5 +1,6 @@
-# Copyright (C) 2020-2023 Intel Corporation
+# Copyright (C) 2020-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+
 
 from openfl.experimental.interface.fl_spec import FLSpec
 from openfl.experimental.interface.participants import Aggregator, Collaborator
@@ -7,9 +8,12 @@ from openfl.experimental.runtime import LocalRuntime
 from openfl.experimental.placement.placement import aggregator, collaborator
 import numpy as np
 import sys
+import pytest
 
 
-class bcolors:  # NOQA: N801
+
+
+class bcolors:
     HEADER = "\033[95m"
     OKBLUE = "\033[94m"
     OKCYAN = "\033[96m"
@@ -20,92 +24,98 @@ class bcolors:  # NOQA: N801
     BOLD = "\033[1m"
     UNDERLINE = "\033[4m"
 
+@pytest.fixture(scope="class")
+def flflow():
+    class TestFlow_InternalLoop(FLSpec):
+        def __init__(self, model=None, optimizer=None, rounds=None, **kwargs):
+            super().__init__(**kwargs)
+            self.training_rounds = rounds
+            self.train_count = 0
+            self.end_count = 0
 
-class TestFlowInternalLoop(FLSpec):
-    def __init__(self, model=None, optimizer=None, rounds=None, **kwargs):
-        super().__init__(**kwargs)
-        self.training_rounds = rounds
-        self.train_count = 0
-        self.end_count = 0
+        @aggregator
+        def start(self):
+            """
+            Flow start.
 
-    @aggregator
-    def start(self):
-        """
-        Flow start.
+            """
+            print(
+                f"{bcolors.OKBLUE}Testing FederatedFlow - "
+                + f"Test for Internal Loops - Round: {self.train_count}"
+                + f" of Training Rounds: {self.training_rounds}{bcolors.ENDC}"
+            )
+            self.model = np.zeros((10, 10, 10))  # Test model
+            self.collaborators = self.runtime.collaborators
+            self.next(self.agg_model_mean, foreach="collaborators")
 
-        """
-        print(
-            f"{bcolors.OKBLUE}Testing FederatedFlow - "
-            + f"Test for Internal Loops - Round: {self.train_count}"
-            + f" of Training Rounds: {self.training_rounds}{bcolors.ENDC}"
-        )
-        self.model = np.zeros((10, 10, 10))  # Test model
-        self.collaborators = self.runtime.collaborators
-        self.next(self.agg_model_mean, foreach="collaborators")
+        @collaborator
+        def agg_model_mean(self):
+            """
+            Calculating the mean of the model created in start.
+            """
 
-    @collaborator
-    def agg_model_mean(self):
-        """
-        Calculating the mean of the model created in start.
-        """
+            self.agg_mean_value = np.mean(self.model)
+            print(
+                f"<Collab>: {self.input} Mean of Agg model: {self.agg_mean_value} "
+            )
+            self.next(self.collab_model_update)
 
-        self.agg_mean_value = np.mean(self.model)
-        print(
-            f"<Collab>: {self.input} Mean of Agg model: {self.agg_mean_value} "
-        )
-        self.next(self.collab_model_update)
+        @collaborator
+        def collab_model_update(self):
+            """
+            Initializing the model with random numbers.
+            """
+            print(f"<Collab>: {self.input} Initializing the model randomly ")
+            self.model = np.random.randint(1, len(self.input), (10, 10, 10))
+            self.next(self.local_model_mean)
 
-    @collaborator
-    def collab_model_update(self):
-        """
-        Initializing the model with random numbers.
-        """
-        print(f"<Collab>: {self.input} Initializing the model randomly ")
-        self.model = np.random.randint(1, len(self.input), (10, 10, 10))
-        self.next(self.local_model_mean)
+        @collaborator
+        def local_model_mean(self):
+            """
+            Calculating the mean of the model created in train.
+            """
+            self.local_mean_value = np.mean(self.model)
+            print(f"<Collab>: {self.input} Local mean: {self.local_mean_value} ")
+            self.next(self.join)
 
-    @collaborator
-    def local_model_mean(self):
-        """
-        Calculating the mean of the model created in train.
-        """
-        self.local_mean_value = np.mean(self.model)
-        print(f"<Collab>: {self.input} Local mean: {self.local_mean_value} ")
-        self.next(self.join)
+        @aggregator
+        def join(self, inputs):
+            """
+            Joining inputs from collaborators
+            """
+            self.agg_mean = sum(input.local_mean_value for input in inputs) / len(
+                inputs
+            )
+            print(f"Aggregated mean : {self.agg_mean}")
+            self.next(self.internal_loop)
 
-    @aggregator
-    def join(self, inputs):
-        """
-        Joining inputs from collaborators
-        """
-        self.agg_mean = sum(input.local_mean_value for input in inputs) / len(
-            inputs
-        )
-        print(f"Aggregated mean : {self.agg_mean}")
-        self.next(self.internal_loop)
+        @aggregator
+        def internal_loop(self):
+            """
+            Internally Loop for training rounds
+            """
+            self.train_count = self.train_count + 1
+            if self.training_rounds == self.train_count:
+                self.next(self.end)
+            else:
+                self.next(self.start)
 
-    @aggregator
-    def internal_loop(self):
-        """
-        Internally Loop for training rounds
-        """
-        self.train_count = self.train_count + 1
-        if self.training_rounds == self.train_count:
-            self.next(self.end)
-        else:
-            self.next(self.start)
+        @aggregator
+        def end(self):
+            """
+            This is the 'end' step. All flows must have an 'end' step, which is the
+            last step in the flow.
 
-    @aggregator
-    def end(self):
-        """
-        This is the 'end' step. All flows must have an 'end' step, which is the
-        last step in the flow.
-
-        """
-        self.end_count = self.end_count + 1
-        print("This is the end of the flow")
-
-
+            """
+            self.end_count = self.end_count + 1
+            print("This is the end of the flow")
+    model = None
+    best_model = None
+    optimizer = None
+    top_model_accuracy = 0
+    round = 5
+    return TestFlow_InternalLoop(model, optimizer, round, checkpoint=True)
+    
 def validate_flow(flow_obj, expected_flow_steps):
     """
     Validate:
@@ -118,7 +128,7 @@ def validate_flow(flow_obj, expected_flow_steps):
 
     from metaflow import Flow
 
-    cli_flow_obj = Flow("TestFlowInternalLoop")  # Flow object from CLI
+    cli_flow_obj = Flow("TestFlow_InternalLoop")  # Flow object from CLI
     cli_flow_steps = list(cli_flow_obj.latest_run)  # Steps from CLI
     cli_step_names = [step.id for step in cli_flow_steps]
 
@@ -138,7 +148,7 @@ def validate_flow(flow_obj, expected_flow_steps):
         # Each aggregator step should be executed for training rounds times
         if (
             (func.aggregator_step is True)
-            and (task_count != flflow.training_rounds)
+            and (task_count != flow_obj.training_rounds)
             and (step.id != "end")
         ):
             validate_flow_error.append(
@@ -148,12 +158,12 @@ def validate_flow(flow_obj, expected_flow_steps):
 
         # Each collaborator step is executed for (training rounds)*(number of collaborator) times
         if (func.collaborator_step is True) and (
-            task_count != len(flow_obj.collaborators) * flflow.training_rounds
+            task_count != len(flow_obj.collaborators) * flow_obj.training_rounds
         ):
             validate_flow_error.append(
                 f"{bcolors.FAIL}... Error : Incorrect number of execution detected for "
                 + f"Collaborator Step: {step}. Expected: "
-                + f"{flflow.training_rounds*len(flow_obj.collaborators)} "
+                + f"{flow_obj.training_rounds*len(flow_obj.collaborators)} "
                 + f"Actual: {task_count}{bcolors.ENDC} \n"
             )
 
@@ -210,8 +220,7 @@ def display_validate_errors(validate_flow_error):
     """
     print("".join(validate_flow_error))
 
-
-if __name__ == "__main__":
+def testFlow_internalloop(flflow):
 
     # Setup participants
     aggregator = Aggregator()
@@ -242,12 +251,6 @@ if __name__ == "__main__":
 
     print(f"Local runtime collaborators = {local_runtime.collaborators}")
 
-    model = None
-    best_model = None
-    optimizer = None
-    top_model_accuracy = 0
-
-    flflow = TestFlowInternalLoop(model, optimizer, 5, checkpoint=True)
     flflow.runtime = local_runtime
     flflow.run()
 
