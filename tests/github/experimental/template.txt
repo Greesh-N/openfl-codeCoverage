@@ -1,0 +1,38 @@
+@startuml
+scale 500 width
+allow_mixing
+<style>
+classdiagram {
+    class {
+        BackgroundColor WhiteSmoke
+    }
+}
+
+</style>
+
+skinparam {
+defaultFontName courier
+packageStyle Rectangle
+PackageTitleAlignment left
+PackageBorderColor black
+PackageBorderThickness 3 
+PackageFontSize 8 
+PackageFontStyle bold
+padding 100
+ClassBorderColor black
+ClassBorderThickness 2
+ClassFontSize 20
+ClassFontStyle bold
+ArrowThickness 18
+ArrowColor Silver
+CollectionsBackgroundColor WhiteSmoke
+CollectionsBorderColor Black
+CollectionsFontStyle bold
+CollectionsFontSize 20
+CollectionsBorderThickness 2
+}
+skinparam sameClassWidth true
+skinparam minClassWidth 400
+skinparam style strictuml
+skinparam linetype ortho
+hide empty members
