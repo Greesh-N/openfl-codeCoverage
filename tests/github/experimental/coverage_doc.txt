@@ -1,0 +1,16 @@
+""coverage commands""
+
+1. Install coverage
+   pip install coverage
+
+2. command to find coverage on py file
+
+   pytest --cov=openfl testflow_coverage.py
+
+3. Generate report on results
+ 
+   coverage report -m
+
+4. to get annotated HTML listings detailing missed lines
+   
+    coverage html
