@@ -1,6 +1,3 @@
-# tmp_str = {"name":"keerti",}
-# print(tmp_str[0])
-
 from plantuml import PlantUML
 from os.path import abspath
 
