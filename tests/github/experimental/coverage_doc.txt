@@ -5,7 +5,7 @@
 
 2. command to find coverage on py file
 
-   pytest --cov=openfl testflow_coverage.py
+   pytest --cov=openfl <python file>
 
 3. Generate report on results
  
